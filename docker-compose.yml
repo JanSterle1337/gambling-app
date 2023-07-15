@@ -1,0 +1,83 @@
+version: "3.2"
+
+services:
+  php:
+    image: "wodby/php:${PHP_TAG}"
+    container_name: "${PROJECT_NAME}_php"
+    environment:
+      PHP_SENDMAIL_PATH: /usr/sbin/sendmail -t -i -S mailhog:1025
+      PHP_DATE_TIMEZONE: $PHP_DATE_TIMEZONE
+      PHP_POST_MAX_SIZE: $PHP_POST_MAX_SIZE
+      PHP_UPLOAD_MAX_FILESIZE: $PHP_UPLOAD_MAX_FILESIZE
+      PHP_OPCACHE_ENABLE_CLI: $PHP_OPCACHE_ENABLE_CLI
+      PHP_APCU_ENABLE_CLI: $PHP_APCU_ENABLE_CLI
+      PHP_FPM_USER: $PHP_FPM_USER
+      PHP_FPM_GROUP: $PHP_FPM_GROUP
+      PHP_MEMORY_LIMIT: $PHP_MEMORY_LIMIT
+    env_file:
+      - .env
+    volumes:
+      - ./:/var/www/html
+
+  mariadb:
+    image: "wodby/mariadb:${MARIADB_TAG}"
+    container_name: "${PROJECT_NAME}_mariadb"
+    stop_grace_period: 30s
+    environment:
+      MYSQL_ROOT_PASSWORD: $DB_ROOT_PASSWORD
+      MYSQL_DATABASE: $DB_NAME
+      MYSQL_USER: $DB_USER
+      MYSQL_PASSWORD: $DB_PASSWORD
+      # To detect any issues locally with locks / timeouts (in seconds)
+      MYSQL_INNODB_LOCK_WAIT_TIMEOUT: 30
+      MYSQL_WAIT_TIMEOUT: 30
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./.docker/mariadb/data:/var/lib/mysql
+    labels:
+      - 'traefik.backend=mariadb'
+      - 'traefik.port=3306'
+      - 'traefik.frontend.rule=Host:mariadb.${PROJECT_BASE_URL}'
+
+  pma:
+    image: phpmyadmin/phpmyadmin
+    container_name: "${PROJECT_NAME}_pma"
+    environment:
+      PMA_HOST: $DB_HOST
+      PMA_USER: $DB_USER
+      PMA_PASSWORD: $DB_PASSWORD
+      UPLOAD_LIMIT: 1G
+      PMA_USER_CONFIG_BASE64: PD9waHAKCmZvciAoJGkgPSAxOyBpc3NldCgkaG9zdHNbJGkgLSAxXSk7ICRpKyspIHsKICAkY2ZnWydTZXJ2ZXJzJ11bJGldWydoaWRlX2RiJ10gPSAnXmluZm9ybWF0aW9uX3NjaGVtYSQnOwp9Cg==
+    labels:
+      - 'traefik.backend=pma'
+      - 'traefik.port=80'
+      - 'traefik.frontend.rule=Host:pma.${PROJECT_BASE_URL}'
+
+  nginx:
+    image: "wodby/nginx:${NGINX_TAG}"
+    container_name: "${PROJECT_NAME}_nginx"
+    depends_on:
+      - php
+    environment:
+      NGINX_STATIC_OPEN_FILE_CACHE: "off"
+      NGINX_ERROR_LOG_LEVEL: debug
+      NGINX_BACKEND_HOST: php
+      NGINX_VHOST_PRESET: php
+      NGINX_SERVER_ROOT: /var/www/html/public
+    volumes:
+      - ./:/var/www/html
+    labels:
+      - 'traefik.backend=nginx'
+      - 'traefik.port=80'
+      - 'traefik.frontend.rule=Host:${PROJECT_BASE_URL}'
+
+  traefik:
+    image: traefik:$TRAEFIC_TAG
+    container_name: "${PROJECT_NAME}_traefik"
+    command: -c /dev/null --web --docker --logLevel=INFO
+    ports:
+      - '80:80'
+      - '8080:8080' # Dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock

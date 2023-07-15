@@ -1,0 +1,9 @@
+/.idea/
+/vendor/
+/.env
+
+.docker/php/*
+.docker/php/.composer/cache/*
+.docker/mariadb/data/*
+
+!.gitignore
